@@ -1022,7 +1022,7 @@ async function cleanupStaleWatches() {
 // СТАРТ
 // =============================================================================
 
-app.listen(PORT, () => {
+app.listen(PORT, '127.0.0.1', () => {
   console.log(`\n🎮 Price Lookup Service`);
   console.log(`   Running on http://localhost:${PORT}`);
   console.log(`\n   Endpoints:`);
