@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Не нашли игру? — Поиграем</title>
+  <style>
+    :root {
+      --bg: #0f0f0f;
+      --card: #1a1a1a;
+      --card2: #222;
+      --text: #f0f0f0;
+      --muted: #888;
+      --accent: #3d9dff;
+      --accent-h: #5aadff;
+      --green: #4caf50;
+      --red: #e53935;
+      --border: #333;
+      --r: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px 80px;
+    }
+    .wrap { width: 100%; max-width: 560px; }
+    .back { color: var(--muted); font-size: .85rem; text-decoration: none; display: inline-block; margin-bottom: 24px; }
+    .back:hover { color: var(--text); }
+    h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 8px; }
+    .sub { color: var(--muted); font-size: .95rem; margin-bottom: 28px; line-height: 1.5; }
+
+    .search-wrap { position: relative; margin-bottom: 20px; }
+    .search-row { display: flex; gap: 8px; }
+    .suggest-box { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--card2); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; z-index: 10; display: none; }
+    .suggest-box.on { display: block; }
+    .suggest-item { padding: 10px 16px; cursor: pointer; font-size: .93rem; border-bottom: 1px solid var(--border); transition: background .1s; }
+    .suggest-item:last-child { border-bottom: none; }
+    .suggest-item:hover, .suggest-item.active { background: var(--border); }
+    input[type="text"] {
+      flex: 1;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      color: var(--text);
+      padding: 13px 16px;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color .15s;
+    }
+    input[type="text"]:focus { border-color: var(--accent); }
+    input[type="text"]::placeholder { color: var(--muted); }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--r);
+      padding: 13px 20px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background .15s, opacity .15s;
+    }
+    button:hover { background: var(--accent-h); }
+    button:disabled { opacity: .45; cursor: default; }
+
+    .loader { display: none; color: var(--muted); font-size: .9rem; padding: 20px 0; }
+    .loader.on { display: block; }
+    .dots span { animation: blink 1.2s infinite; }
+    .dots span:nth-child(2) { animation-delay: .2s; }
+    .dots span:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink { 0%,80%,100%{opacity:.2} 40%{opacity:1} }
+
+    /* ── Модалка результата ── */
+    .smodal {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.75); z-index: 200;
+      align-items: flex-end; justify-content: center;
+      padding: 0; backdrop-filter: blur(4px);
+    }
+    .smodal.on { display: flex; }
+    @media(min-width:540px) { .smodal { align-items: center; padding: 16px; } }
+    .smodal-card {
+      background: var(--card); border-radius: var(--r) var(--r) 0 0;
+      width: 100%; max-width: 560px; max-height: 92vh;
+      overflow-y: auto; position: relative; padding: 24px 20px 32px;
+      animation: modal-up .22s ease;
+    }
+    @media(min-width:540px) { .smodal-card { border-radius: var(--r); animation: modal-in .2s ease; } }
+    @keyframes modal-up { from { transform: translateY(60px); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes modal-in { from { transform: scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
+    .smodal-close {
+      position: absolute; top: 14px; right: 14px;
+      background: var(--card2); border: 1px solid var(--border); border-radius: 50%;
+      width: 30px; height: 30px; font-size: .85rem; cursor: pointer;
+      color: var(--muted); display: flex; align-items: center; justify-content: center; padding: 0;
+    }
+    .smodal-close:hover { color: var(--text); background: var(--border); }
+
+    /* ── Найдено ── */
+    .m-found { display: flex; gap: 18px; align-items: flex-start; margin-bottom: 20px; }
+    .m-cover {
+      width: 100px; min-width: 100px; border-radius: 10px;
+      aspect-ratio: 3/4; object-fit: cover; display: block; background: var(--card2);
+    }
+    .m-cover-ph { width: 100px; min-width: 100px; border-radius: 10px; aspect-ratio: 3/4; background: var(--card2); display: flex; align-items: center; justify-content: center; font-size: 2.4rem; }
+    .m-info { flex: 1; min-width: 0; }
+    .m-name { font-size: 1.05rem; font-weight: 700; line-height: 1.3; margin-bottom: 8px; }
+    .m-price { font-size: 2.2rem; font-weight: 700; color: var(--accent); line-height: 1; margin-bottom: 4px; }
+    .sale-badge { display: inline-block; background: var(--red); color: #fff; font-size: .68rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle; }
+    .m-note { color: var(--muted); font-size: .76rem; margin-bottom: 0; }
+    .m-warn { display: flex; gap: 8px; align-items: flex-start; background: rgba(229,57,53,.08); border: 1px solid rgba(229,57,53,.35); color: var(--red); font-size: .82rem; line-height: 1.35; padding: 9px 11px; border-radius: 8px; margin: 10px 0 2px; }
+    .m-alts { margin-top: 8px; }
+    .m-alts-label { color: var(--muted); font-size: .75rem; margin-bottom: 4px; }
+    .m-alt-item { font-size: .8rem; color: var(--muted); padding: 3px 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+    .m-alt-item:last-child { border-bottom: none; }
+    .m-alt-price { color: var(--text); font-weight: 600; white-space: nowrap; margin-left: 8px; }
+
+    /* ── Список изданий (когда нашли несколько версий одной игры) ── */
+    .m-eds { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+    .m-ed-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: rgba(255,255,255,.05); border-radius: 10px; border: 1px solid var(--border); cursor: pointer; transition: background .15s, border-color .15s; }
+    .m-ed-row:hover { background: rgba(255,255,255,.08); }
+    .m-ed-row.sel { background: rgba(37,99,235,.12); border-color: rgba(37,99,235,.4); }
+    .m-ed-check { flex-shrink: 0; width: 18px; text-align: center; font-size: 1rem; color: var(--accent); }
+    .m-ed-cover { width: 44px; min-width: 44px; aspect-ratio: 3/4; object-fit: cover; border-radius: 6px; background: var(--card2); display: block; }
+    .m-ed-cover-ph { width: 44px; min-width: 44px; aspect-ratio: 3/4; border-radius: 6px; background: var(--card2); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; opacity: .5; }
+    .m-ed-info { flex: 1; min-width: 0; }
+    .m-ed-name { font-size: .88rem; font-weight: 600; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .m-ed-price { font-size: 1rem; font-weight: 700; color: var(--accent); margin-top: 2px; }
+    .m-ed-btn { flex-shrink: 0; padding: 7px 12px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 8px; font-size: .78rem; font-weight: 600; white-space: nowrap; }
+
+    /* ── Кнопки покупки ── */
+    .m-btns { display: flex; flex-direction: column; gap: 10px; }
+    .btn-buy {
+      display: block; padding: 15px 12px; font-size: .95rem; border-radius: var(--r);
+      text-align: center; text-decoration: none; color: #fff; font-weight: 600; cursor: pointer;
+      transition: background .15s; border: none;
+    }
+    .btn-buy.shop { background: #2563eb; }
+    .btn-buy.shop:hover { background: #1d4ed8; }
+    .m-btns-row { display: flex; gap: 10px; }
+    .m-btns-row .btn-buy { flex: 1; padding: 13px 8px; font-size: .88rem; }
+    .btn-buy.tg  { background: #229ed9; }
+    .btn-buy.tg:hover  { background: #1a8fc0; }
+    .btn-buy.vk  { background: #4a76a8; }
+    .btn-buy.vk:hover  { background: #3a6090; }
+
+    /* ── Следить за скидкой ── */
+    .btn-watch { width: 100%; padding: 12px; background: transparent; border: 1px solid #444; border-radius: var(--r); color: #888; font-size: .88rem; cursor: pointer; transition: border-color .15s, color .15s; }
+    .btn-watch:hover { border-color: #888; color: #ccc; }
+    .btn-watch:disabled { color: #555; border-color: #333; cursor: default; }
+
+    /* ── Выбор игры (ambiguous) ── */
+    .m-amb-label { color: var(--muted); font-size: .9rem; margin-bottom: 16px; }
+    .m-amb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 12px; }
+    .m-cand {
+      background: var(--card2); border: 1px solid var(--border); border-radius: var(--r);
+      overflow: hidden; cursor: pointer; transition: border-color .15s, transform .1s;
+    }
+    .m-cand:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .m-cand-cover { width: 100%; aspect-ratio: 3/4; object-fit: cover; display: block; background: var(--card2); }
+    .m-cand-ph { width: 100%; aspect-ratio: 3/4; display: flex; align-items: center; justify-content: center; font-size: 2rem; opacity: .35; background: var(--card2); }
+    .m-cand-name { padding: 8px; font-size: .8rem; line-height: 1.3; color: var(--text); }
+
+    /* ── Форма заявки ── */
+    .nf-text { color: var(--muted); line-height: 1.5; margin-bottom: 20px; font-size: .95rem; }
+    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+    .field label { font-size: .82rem; color: var(--muted); }
+    .ctype { display: flex; gap: 8px; margin-bottom: 14px; }
+    .ctype label {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+      background: var(--card2); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 6px; cursor: pointer; font-size: .88rem; transition: border-color .15s;
+    }
+    .ctype input[type="radio"] { display: none; }
+    .ctype label:has(input:checked) { border-color: var(--accent); color: var(--accent); }
+    .btn-send { width: 100%; padding: 15px; font-size: 1rem; margin-top: 4px; }
+    .err { color: var(--red); font-size: .85rem; margin-top: 8px; min-height: 20px; }
+    .ok-msg { text-align: center; padding: 8px 0 4px; }
+    .ok-msg .icon { font-size: 2rem; margin-bottom: 8px; }
+    .ok-msg .title { font-size: 1.1rem; font-weight: 600; color: var(--green); }
+    .ok-msg .hint { color: var(--muted); font-size: .88rem; margin-top: 6px; }
+    .err-inline { color: var(--red); font-size: .88rem; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <a href="https://poigraem.shop" class="back">← Поиграем</a>
+  <h1>Не нашли игру?</h1>
+  <p class="sub">Введите название — проверим цену за несколько секунд</p>
+
+  <div class="search-wrap">
+    <div class="search-row">
+      <input type="text" id="qInput" placeholder="Например: Cyberpunk 2077" autocomplete="off" />
+      <button id="qBtn" onclick="doSearch()">Узнать цену</button>
+    </div>
+    <div class="suggest-box" id="suggest-box"></div>
+  </div>
+
+  <div class="loader" id="loader">Ищем в магазине<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>
+</div>
+
+<div class="smodal" id="smodal" onclick="if(event.target===this)closeModal()">
+  <div class="smodal-card">
+    <button class="smodal-close" onclick="closeModal()">✕</button>
+    <div id="smodal-body"></div>
+  </div>
+</div>
+
+<script>
+  let cfg = { managerType: 'telegram', managerValue: '', fallbackType: '', fallbackValue: '' };
+  fetch('/price-lookup/api/config').then(r => r.json()).then(d => { cfg = d; }).catch(() => {});
+
+  const _params = new URLSearchParams(location.search);
+  const _source = _params.get('ref') === 'chatbot' ? 'chatbot' : 'direct';
+
+  // ── Автодополнение (маленькое, пока печатают) ──────────────────────────────
+  let _suggestTimer = null;
+  const qInput = document.getElementById('qInput');
+  const suggestBox = document.getElementById('suggest-box');
+
+  qInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter')     { hideSuggest(); doSearch(); return; }
+    if (e.key === 'Escape')    { hideSuggest(); closeModal(); return; }
+    if (e.key === 'ArrowDown') { moveSuggest(1); e.preventDefault(); return; }
+    if (e.key === 'ArrowUp')   { moveSuggest(-1); e.preventDefault(); return; }
+  });
+  qInput.addEventListener('input', () => {
+    clearTimeout(_suggestTimer);
+    const val = qInput.value.trim();
+    if (val.length < 2) { hideSuggest(); return; }
+    _suggestTimer = setTimeout(() => fetchSuggest(val), 350);
+  });
+  document.addEventListener('click', e => { if (!e.target.closest('.search-wrap')) hideSuggest(); });
+
+  async function fetchSuggest(q) {
+    try {
+      const r = await fetch('/price-lookup/api/suggest?q=' + encodeURIComponent(q));
+      showSuggest(await r.json());
+    } catch { hideSuggest(); }
+  }
+  function showSuggest(names) {
+    if (!names.length) { hideSuggest(); return; }
+    suggestBox.innerHTML = names.map((n, i) =>
+      `<div class="suggest-item" data-idx="${i}" onmousedown="pickSuggest('${a(n)}')">${h(n)}</div>`
+    ).join('');
+    suggestBox.classList.add('on');
+  }
+  function hideSuggest() { suggestBox.classList.remove('on'); suggestBox.innerHTML = ''; }
+  function pickSuggest(name) { qInput.value = name; hideSuggest(); doSearch(); }
+  function moveSuggest(dir) {
+    const items = suggestBox.querySelectorAll('.suggest-item');
+    if (!items.length) return;
+    const cur = suggestBox.querySelector('.suggest-item.active');
+    let idx = cur ? parseInt(cur.dataset.idx) + dir : (dir > 0 ? 0 : items.length - 1);
+    idx = Math.max(0, Math.min(items.length - 1, idx));
+    items.forEach(el => el.classList.remove('active'));
+    items[idx].classList.add('active');
+    qInput.value = items[idx].textContent;
+  }
+
+  // ── Поиск ────────────────────────────────────────────────────────────────────
+  async function doSearch() {
+    if (document.getElementById('qBtn').disabled) return;
+    const name = qInput.value.trim();
+    if (!name) return;
+    hideSuggest();
+    setLoading(true);
+    showModal('<div style="text-align:center;padding:60px 0;color:var(--muted)">Ищем в магазине<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>');
+    try {
+      const r = await fetch('/price-lookup/api/price-lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameName: name, source: _source }),
+      });
+      const d = await r.json();
+      render(d, name);
+    } catch {
+      showModal('<p class="err-inline">Не удалось выполнить запрос. Проверьте соединение.</p>');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Состояние режима «несколько изданий»: список изданий + индекс выбранного
+  let _eds = null, _selIdx = 0;
+  let _priceUncertain = false;
+  // Баннер C: показанная цена индийская, турецкую (обычно дешевле) сверить не удалось.
+  const warnHtml = () => _priceUncertain
+    ? `<div class="m-warn"><span>⚠️</span><span>В цене возможна ошибка — свяжитесь с менеджером для уточнения.</span></div>`
+    : '';
+  // PL-17: издания, на которые уже оформлена подписка в рамках текущего результата
+  // поиска — переключение между изданиями (selectEdition перерисовывает кнопки)
+  // больше не теряет отметку и не даёт создать вторую подписку по невнимательности.
+  let _watchedNames = new Set();
+
+  // ── Рендер результата в модалке ───────────────────────────────────────────
+  function render(d, gameName) {
+    _eds = null;
+    _watchedNames = new Set();
+    _priceUncertain = !!d.priceUncertain;
+    if (d.status === 'found') {
+      const coverHtml = d.coverUrl
+        ? `<img class="m-cover" src="${h(d.coverUrl)}" alt="" onerror="this.outerHTML='<div class=m-cover-ph>🎮</div>'">`
+        : `<div class="m-cover-ph">🎮</div>`;
+      const eds = d.editions && d.editions.length > 1 ? d.editions : null;
+
+      if (eds) {
+        // Несколько изданий — строки-переключатели, наверху обложка выбранного
+        _eds = eds;
+        openModal();
+        selectEdition(0);
+      } else {
+        // Одно издание — стандартный вид
+        const sale = d.isOnSale ? `<span class="sale-badge">${h(d.discountText || 'АКЦИЯ')}</span>` : '';
+        showModal(`
+          <div class="m-found">
+            ${coverHtml}
+            <div class="m-info">
+              <div class="m-name">${h(d.neutralLabel)}</div>
+              <div class="m-price">от ${d.priceRUB.toLocaleString('ru-RU')} ₽${sale}</div>
+              <div class="m-note">Ориентировочная цена · точная — у менеджера</div>
+            </div>
+          </div>
+          ${warnHtml()}
+          <div class="m-btns">${buyButtons(d.neutralLabel, d.priceRUB)}</div>
+          ${watchBtn(d.neutralLabel, d.priceRUB, d.neutralLabel)}
+        `);
+      }
+    } else if (d.status === 'ambiguous') {
+      const cards = (d.candidates || []).map(c => {
+        const img = c.coverUrl
+          ? `<img class="m-cand-cover" src="${h(c.coverUrl)}" alt="" onerror="this.outerHTML='<div class=m-cand-ph>🎮</div>'">`
+          : `<div class="m-cand-ph">🎮</div>`;
+        return `<div class="m-cand" onclick="refine('${a(c.name)}')">${img}<div class="m-cand-name">${h(c.name)}</div></div>`;
+      }).join('');
+      showModal(`<p class="m-amb-label">Вы имели в виду?</p><div class="m-amb-grid">${cards}</div>`);
+    } else if (d.status === 'not_found') {
+      showForm(gameName);
+    } else {
+      // Лимит/сетевая/серверная ошибка (d.error) — НЕ показываем «не нашли игру» (PL-2)
+      showModal(`<p class="err-inline">${h(d.message || d.error || 'Не удалось выполнить запрос. Попробуйте ещё раз.')}</p>`);
+    }
+  }
+
+  // Выбор издания: перерисовывает верхнюю обложку/цену, подсветку строки и кнопки покупки
+  function selectEdition(i) {
+    const eds = _eds;
+    if (!eds || !eds[i]) return;
+    _selIdx = i;
+    const ed = eds[i];
+    const coverHtml = ed.coverUrl
+      ? `<img class="m-cover" src="${h(ed.coverUrl)}" alt="" onerror="this.outerHTML='<div class=m-cover-ph>🎮</div>'">`
+      : `<div class="m-cover-ph">🎮</div>`;
+    const sale = ed.isOnSale ? `<span class="sale-badge">${h(ed.discountText || 'АКЦИЯ')}</span>` : '';
+    const rows = eds.map((e, j) => {
+      const eSale = e.isOnSale ? `<span class="sale-badge">${h(e.discountText || 'АКЦИЯ')}</span>` : '';
+      const eCover = e.coverUrl
+        ? `<img class="m-ed-cover" src="${h(e.coverUrl)}" alt="" onerror="this.outerHTML='<div class=m-ed-cover-ph>🎮</div>'">`
+        : `<div class="m-ed-cover-ph">🎮</div>`;
+      return `<div class="m-ed-row${j === i ? ' sel' : ''}" onclick="selectEdition(${j})">
+        ${eCover}
+        <div class="m-ed-info">
+          <div class="m-ed-name">${h(e.name)}</div>
+          <div class="m-ed-price">от ${e.priceRUB.toLocaleString('ru-RU')} ₽${eSale}</div>
+        </div>
+        <span class="m-ed-check">${j === i ? '●' : '○'}</span>
+      </div>`;
+    }).join('');
+    document.getElementById('smodal-body').innerHTML = `
+      <div class="m-found" style="align-items:center">
+        ${coverHtml}
+        <div class="m-info">
+          <div class="m-name">${h(ed.name)}</div>
+          <div class="m-price">от ${ed.priceRUB.toLocaleString('ru-RU')} ₽${sale}</div>
+          <div class="m-note">Выберите издание ниже · цена ориентировочная</div>
+        </div>
+      </div>
+      ${warnHtml()}
+      <div class="m-eds">${rows}</div>
+      <div class="m-btns">${buyButtons(ed.name, ed.priceRUB)}</div>
+      ${watchBtn(ed.name, ed.priceRUB, ed.name)}
+    `;
+  }
+
+  async function refine(name) {
+    qInput.value = name;
+    setLoading(true);
+    showModal('<div style="text-align:center;padding:60px 0;color:var(--muted)">Ищем<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>');
+    try {
+      const r = await fetch('/price-lookup/api/price-lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameName: name, source: _source }),
+      });
+      const d = await r.json();
+      render(d, name);
+    } catch {
+      showModal('<p class="err-inline">Не удалось выполнить запрос. Проверьте соединение.</p>');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function showForm(gameName) {
+    showModal(`
+      <p class="nf-text">Не нашли эту игру в каталоге.<br>Оставьте заявку — рассчитаем вручную и свяжемся с вами.</p>
+      <div class="field">
+        <label>Название игры</label>
+        <input type="text" id="fGame" value="${a(gameName)}" />
+      </div>
+      <div class="field">
+        <label>Как с вами связаться?</label>
+        <div class="ctype">
+          <label><input type="radio" name="ct" value="telegram" checked><span>Telegram</span></label>
+          <label><input type="radio" name="ct" value="vk"><span>ВКонтакте</span></label>
+          <label><input type="radio" name="ct" value="phone"><span>Телефон</span></label>
+        </div>
+        <input type="text" id="fContact" placeholder="@username / ссылка / номер" />
+      </div>
+      <button class="btn-send" type="button" onclick="sendRequest()">Отправить заявку</button>
+      <div class="err" id="fErr"></div>
+    `);
+  }
+
+  async function sendRequest() {
+    const game    = document.getElementById('fGame').value.trim();
+    const contact = document.getElementById('fContact').value.trim();
+    const ct      = document.querySelector('input[name="ct"]:checked')?.value || 'telegram';
+    const errEl   = document.getElementById('fErr');
+    errEl.textContent = '';
+    if (!game)    { errEl.textContent = 'Введите название игры'; return; }
+    if (!contact) { errEl.textContent = 'Укажите контакт для связи'; return; }
+    const btn = document.querySelector('.btn-send');
+    btn.disabled = true; btn.textContent = 'Отправляем…';
+    try {
+      const r = await fetch('/price-lookup/api/price-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameName: game, contact, contactType: ct }),
+      });
+      if (r.ok) {
+        showModal(`<div class="ok-msg"><div class="icon">✓</div><div class="title">Заявка принята!</div><div class="hint">Свяжемся с вами в ближайшее время.</div></div>`);
+      } else {
+        const data = await r.json().catch(() => ({}));
+        errEl.textContent = data.error || 'Ошибка при отправке. Попробуйте ещё раз.';
+        btn.disabled = false; btn.textContent = 'Отправить заявку';
+      }
+    } catch {
+      errEl.textContent = 'Не удалось отправить. Проверьте соединение.';
+      btn.disabled = false; btn.textContent = 'Отправить заявку';
+    }
+  }
+
+  function buyButtons(gameName, priceRub) {
+    const text = encodeURIComponent(`Хочу купить: ${gameName} (ориентировочно от ${priceRub.toLocaleString('ru-RU')} ₽)`);
+    const tgHandle = (cfg.managerValue || '').replace(/^@/, '') || 'poigraem_shop';
+    const isMobile = /iPhone|Android/i.test(navigator.userAgent);
+    const tgHref = isMobile
+      ? `tg://resolve?domain=${tgHandle}&text=${text}`
+      : `https://t.me/${tgHandle}?text=${text}`;
+    const vkHref   = cfg.fallbackValue ? `${cfg.fallbackValue}?ref=price-lookup` : null;
+    const shopHref = `https://poigraem.shop/?order=${encodeURIComponent(gameName)}&price=${priceRub}`;
+    let html = `<a class="btn-buy shop" href="${shopHref}">🛒 Добавить в корзину магазина</a>`;
+    let contactBtns = `<a class="btn-buy tg" href="${h(tgHref)}" target="_blank" rel="noopener">✈ Написать в Telegram</a>`;
+    if (vkHref) contactBtns += `<a class="btn-buy vk" href="${h(vkHref)}" target="_blank" rel="noopener">ВКонтакте</a>`;
+    html += `<div class="m-btns-row">${contactBtns}</div>`;
+    return html;
+  }
+
+  function watchBtn(gameName, priceRub, gameLabel) {
+    if (!cfg.botName) return '';
+    if (_watchedNames.has(gameName)) {
+      return `<button class="btn-watch" disabled>✅ Открой бот и нажми Start — запомню!</button>`;
+    }
+    return `<button class="btn-watch" onclick="watchGame('${a(gameName)}',${priceRub},'${a(gameLabel || gameName)}')">👀 Следить за скидкой</button>`;
+  }
+
+  async function watchGame(gameName, priceRub, gameLabel) {
+    const btn = document.querySelector('.btn-watch');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Создаём подписку...'; }
+    // PL-16: окно открываем СИНХРОННО в обработчике клика — Safari на iOS блокирует
+    // window.open, вызванный после await (там это уже не расценивается как клик).
+    const win = window.open('', '_blank');
+    try {
+      const r = await fetch('/price-lookup/api/price-watch/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameName, priceRub, gameLabel }),
+      });
+      const d = await r.json();
+      if (!d.token) throw new Error('no token');
+      const botUrl = `https://t.me/${cfg.botName}?start=w_${d.token}`;
+      if (win) win.location = botUrl; else window.open(botUrl, '_blank');
+      _watchedNames.add(gameName);
+      if (btn) { btn.disabled = true; btn.textContent = '✅ Открой бот и нажми Start — запомню!'; }
+    } catch (e) {
+      console.error('watchGame failed:', e);
+      if (win) win.close();
+      if (btn) { btn.disabled = false; btn.textContent = '👀 Следить за скидкой'; }
+    }
+  }
+
+  // ── Модалка ───────────────────────────────────────────────────────────────
+  function openModal() {
+    document.getElementById('smodal').classList.add('on');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeModal() {
+    document.getElementById('smodal').classList.remove('on');
+    document.body.style.overflow = '';
+  }
+  function showModal(html) {
+    document.getElementById('smodal-body').innerHTML = html;
+    openModal();
+  }
+
+  // ── Утилиты ───────────────────────────────────────────────────────────────
+  function setLoading(on) { document.getElementById('loader').classList.toggle('on', on); document.getElementById('qBtn').disabled = on; }
+  function h(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function a(s) { return String(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+  const _gameParam = _params.get('game');
+  if (_gameParam) { qInput.value = _gameParam; doSearch(); }
+</script>
+</body>
+</html>

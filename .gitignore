@@ -1,0 +1,6 @@
+node_modules/
+.env
+*.log
+*.err
+recon/
+.claude/

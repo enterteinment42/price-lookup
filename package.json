@@ -1,0 +1,17 @@
+{
+  "name": "price-lookup",
+  "version": "0.1.0",
+  "description": "Сервис поиска цен на игры в PS Store (TR/IN регионы) для проекта 'Поиграем'",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.2",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.5.2"
+  }
+}

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Price Lookup — Логи</title>
+<style>
+:root {
+  --bg: #0d0f14;
+  --card: #1a1d24;
+  --border: rgba(255,255,255,0.08);
+  --text: #e8eaf0;
+  --muted: #8890a0;
+  --accent: #4a9eff;
+  --green: #4ade80;
+  --red: #f87171;
+  --yellow: #fbbf24;
+  --orange: #f97316;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 13px; padding: 20px; }
+h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+h2 { font-size: 14px; font-weight: 600; margin: 28px 0 10px; color: var(--accent); letter-spacing: .3px; }
+.meta { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+.toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+button { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: border-color .15s; }
+button:hover { border-color: var(--accent); color: var(--accent); }
+.wrap { overflow-x: auto; border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; background: var(--card); min-width: 700px; }
+th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; background: rgba(255,255,255,.02); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,.025); }
+.b { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.b-found    { background: rgba(74,222,128,.15); color: var(--green); }
+.b-not_found{ background: rgba(248,113,113,.15); color: var(--red); }
+.b-ambiguous{ background: rgba(251,191,36,.15);  color: var(--yellow); }
+.b-tr       { background: rgba(74,158,255,.15);  color: var(--accent); }
+.b-in       { background: rgba(249,115,22,.15);  color: var(--orange); }
+.price-rub  { font-weight: 700; color: var(--green); }
+.dim        { color: var(--muted); }
+.err        { color: var(--red); padding: 20px 0; }
+.empty      { color: var(--muted); padding: 16px 0; }
+.new        { color: var(--yellow); }
+.done       { color: var(--green); }
+</style>
+</head>
+<body>
+
+<h1>📊 Price Lookup — Логи</h1>
+<div class="meta" id="meta">Загрузка...</div>
+<div class="toolbar">
+  <button onclick="load()">↻ Обновить</button>
+  <span class="dim" id="updated"></span>
+</div>
+
+<div id="content"></div>
+
+<script>
+const token = new URLSearchParams(location.search).get('token') || '';
+
+function esc(s) {
+  return String(s ?? '—').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function fmtDate(s) {
+  if (!s) return '—';
+  const d = new Date(s);
+  return d.toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+
+function fmtNum(n, suffix) {
+  if (n == null) return '—';
+  return Number(n).toLocaleString('ru-RU') + (suffix || '');
+}
+
+async function load() {
+  document.getElementById('meta').textContent = 'Загрузка...';
+  document.getElementById('content').innerHTML = '<div class="empty">⏳ Получаю данные...</div>';
+  document.getElementById('updated').textContent = '';
+  try {
+    const res = await fetch('/price-lookup/api/admin/logs?token=' + encodeURIComponent(token));
+    if (res.status === 401) {
+      document.getElementById('content').innerHTML = '<div class="err">❌ Неверный токен администратора</div>';
+      document.getElementById('meta').textContent = '';
+      return;
+    }
+    const data = await res.json();
+    render(data);
+  } catch (e) {
+    document.getElementById('content').innerHTML = `<div class="err">❌ Ошибка: ${esc(e.message)}</div>`;
+  }
+}
+
+function render({ logs, requests, demand = [] }) {
+  const now = new Date().toLocaleTimeString('ru-RU');
+  const foundCount = logs.filter(r => r.status === 'found').length;
+  const notFoundCount = logs.filter(r => r.status === 'not_found').length;
+  document.getElementById('meta').textContent =
+    `Поисков: ${logs.length}  (найдено: ${foundCount}, не найдено: ${notFoundCount})   •   Заявок: ${requests.length}`;
+  document.getElementById('updated').textContent = 'обновлено в ' + now;
+
+  // Секция незакрытого спроса
+  let html = '<h2>📈 Незакрытый спрос (не нашли в каталоге)</h2>';
+  if (!demand.length) {
+    html += '<div class="empty">Пока нет — появятся когда клиенты начнут искать отсутствующие игры</div>';
+  } else {
+    html += '<div class="wrap"><table><thead><tr>' +
+      '<th>#</th><th>Запрос</th><th>Кол-во поисков</th><th>Последний раз</th>' +
+      '</tr></thead><tbody>';
+    demand.forEach((d, i) => {
+      html += `<tr>
+        <td class="dim">${i + 1}</td>
+        <td><strong>${esc(d.query)}</strong></td>
+        <td style="color:var(--red);font-weight:700">${d.count}</td>
+        <td class="dim">${fmtDate(d.lastAt)}</td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+  }
+
+  html += '<h2>🔍 Поиски (последние 100)</h2>';
+
+  if (!logs.length) {
+    html += '<div class="empty">Поисков пока нет — появятся после первых запросов клиентов</div>';
+  } else {
+    html += '<div class="wrap"><table><thead><tr>' +
+      '<th>Дата</th><th>Запрос</th><th>Найдена игра</th><th>Статус</th>' +
+      '<th>Цена TR ₺</th><th>Цена IN ₹</th><th>Регион</th><th>Наценка</th><th>Итог ₽</th>' +
+      '</tr></thead><tbody>';
+
+    for (const r of logs) {
+      const st = r.status || 'not_found';
+      const stLabel = st === 'found' ? 'Найдено' : st === 'ambiguous' ? 'Неясно' : 'Нет';
+      const reg = r.winner_region;
+      html += `<tr>
+        <td class="dim">${fmtDate(r.created_at)}</td>
+        <td><strong>${esc(r.game_query)}</strong></td>
+        <td class="dim">${esc(r.found_game)}</td>
+        <td><span class="b b-${st}">${stLabel}</span></td>
+        <td class="dim">${r.price_tr != null ? fmtNum(r.price_tr) : '—'}</td>
+        <td class="dim">${r.price_in != null ? fmtNum(r.price_in) : '—'}</td>
+        <td>${reg ? `<span class="b b-${reg.toLowerCase()}">${reg}</span>` : '<span class="dim">—</span>'}</td>
+        <td class="dim">${r.markup_used != null ? '+' + fmtNum(r.markup_used) + ' ₽' : '—'}</td>
+        <td>${r.price_rub != null ? `<span class="price-rub">${fmtNum(r.price_rub)} ₽</span>` : '<span class="dim">—</span>'}</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+
+  html += '<h2>📋 Заявки «рассчитайте вручную»</h2>';
+
+  if (!requests.length) {
+    html += '<div class="empty">Заявок нет</div>';
+  } else {
+    html += '<div class="wrap"><table><thead><tr>' +
+      '<th>Дата</th><th>Игра</th><th>Контакт</th><th>Тип</th><th>Статус</th><th>Источник</th>' +
+      '</tr></thead><tbody>';
+
+    for (const r of requests) {
+      const stClass = r.status === 'new' ? 'new' : r.status === 'done' ? 'done' : 'dim';
+      html += `<tr>
+        <td class="dim">${fmtDate(r.created_at)}</td>
+        <td><strong>${esc(r.game_query)}</strong></td>
+        <td>${esc(r.client_contact)}</td>
+        <td class="dim">${esc(r.contact_type)}</td>
+        <td class="${stClass}">${esc(r.status || 'new')}</td>
+        <td class="dim">${esc(r.source)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+
+  document.getElementById('content').innerHTML = html;
+}
+
+load();
+</script>
+</body>
+</html>
