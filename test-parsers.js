@@ -49,7 +49,9 @@ console.log(`  Итого: ${priceTests.length - priceFails}/${priceTests.length
 console.log('\n=== 2. normalizeQuery ===');
 const normTests = [
   ['Cyberpunk 2077', 'cyberpunk 2077'],
-  ['GTA V', 'gta 5'],
+  // ABBR-словарь разворачивает gta → grand theft auto (намеренно: нормализация
+  // симметрична для запроса и имени кандидата, поэтому матчинг не страдает)
+  ['GTA V', 'grand theft auto 5'],
   ["Assassin's Creed", 'assassin s creed'],
   ['  Spider-Man  ', 'spider man'],
   ['Final Fantasy VII Remake', 'final fantasy 7 remake'],
