@@ -66,6 +66,40 @@ for (const [input, expected] of normTests) {
 console.log(`  Итого: ${normTests.length - normFails}/${normTests.length}`);
 
 // =============================================================================
+// 2b. matchGame trustTop (PL-23) — alternatives только издания той же игры
+// Синтетические кандидаты (не требует recon/): кириллический запрос вне словаря →
+// trustTop. Чужая дешёвая игра из выдачи Sony НЕ должна попасть в alternatives,
+// иначе lookupPrice покажет её цену и название как ответ.
+// =============================================================================
+console.log('\n=== 2b. matchGame trustTop (PL-23) ===');
+const _tt = (name, cls, price) => ({
+  name, classification: cls, platforms: ['PS5'],
+  basePriceLocal: price, discountedPriceLocal: null, effectivePriceLocal: price,
+  isFree: false, isUnavailable: false, currency: 'TRY',
+});
+const ttCandidates = [
+  _tt('Hogwarts Legacy', 'FULL_GAME', 2999),
+  _tt('Hogwarts Legacy: Digital Deluxe Edition', 'PREMIUM_EDITION', 3999),
+  _tt('Peppa Pig: World Adventures', 'FULL_GAME', 199),          // чужая дешёвая игра
+  _tt('Hogwarts Legacy 2', 'FULL_GAME', 4999),                   // цифра-сиквел — допустимое издание-исключение
+];
+const ttRes = matchGame('хогвартс легаси', ttCandidates, { trustTop: true });
+const ttAltNames = (ttRes.alternatives || []).map((c) => c.name);
+const ttTests = [
+  ['status found', ttRes.status === 'found'],
+  ['best = первый результат Sony', ttRes.best?.name === 'Hogwarts Legacy'],
+  ['Deluxe в alternatives', ttAltNames.includes('Hogwarts Legacy: Digital Deluxe Edition')],
+  ['Peppa Pig НЕ в alternatives', !ttAltNames.includes('Peppa Pig: World Adventures')],
+];
+let ttFails = 0;
+for (const [label, ok] of ttTests) {
+  if (!ok) ttFails++;
+  console.log(`  ${ok ? '✅' : '❌'}  ${label}`);
+}
+console.log(`  alternatives: [${ttAltNames.join(' | ')}]`);
+console.log(`  Итого: ${ttTests.length - ttFails}/${ttTests.length}`);
+
+// =============================================================================
 // 3. parseSearchPage на реальных файлах
 // =============================================================================
 console.log('\n=== 3. parseSearchPage(search-tr.html) ===');

@@ -301,13 +301,17 @@ const EDITION_SUFFIX_WORDS = new Set([
 // "cyberpunk 2077 ultimate edition" vs "cyberpunk 2077" → true (edition-слова)
 // "the witcher 3 wild hunt" vs "the witcher 3" → true (query ≥3 слов → подзаголовок)
 // "alien isolation" vs "alien" → false (query 1 слово, "isolation" не edition-слово)
-function isEditionOfSameGame(queryNorm, nameNorm) {
+// strict=true отключает правило «≥3 слов → подзаголовок» — нужно, когда сравниваются
+// два ПОЛНЫХ имени товаров (trustTop), а не пользовательский запрос с именем:
+// иначе "god of war ragnarok" сошёл бы за издание "god of war".
+function isEditionOfSameGame(queryNorm, nameNorm, strict = false) {
   if (nameNorm === queryNorm) return true;
   if (!nameNorm.startsWith(queryNorm + ' ') && !nameNorm.startsWith(queryNorm + ':')) return false;
   const remainder = nameNorm.slice(queryNorm.length).replace(/^[\s:]+/, '');
   if (!remainder) return true;
   // Остаток состоит только из edition-слов или цифр → то же издание
   if (remainder.split(/\s+/).every(p => /^\d+$/.test(p) || EDITION_SUFFIX_WORDS.has(p))) return true;
+  if (strict) return false;
   // Запрос из ≥3 слов достаточно специфичен: остаток — подзаголовок самой игры
   // ("The Witcher 3 Wild Hunt", "God of War Ragnarok"), а не другая игра серии
   return queryNorm.split(/\s+/).length >= 3;
@@ -336,7 +340,17 @@ export function matchGame(query, candidates, opts = {}) {
   // Если trustTop — PS Store сам обработал перевод/аббревиатуры, берём первый подходящий
   if (trustTop) {
     if (eligible.length === 0) return { status: 'not_found' };
-    return { status: 'found', best: eligible[0], alternatives: eligible.slice(1, 4) };
+    const best = eligible[0];
+    // PL-23: соседние результаты поиска — не обязательно издания той же игры.
+    // Без фильтра чужая дешёвая игра из топа выдачи Sony попадала в общий ценовой
+    // пул lookupPrice и могла победить как «минимальная цена» с чужим названием.
+    // Сравниваем в обе стороны: Deluxe после Standard и Standard после Deluxe.
+    const bestNorm = normalizeQuery(best.name);
+    const alternatives = eligible.slice(1).filter((c) => {
+      const nameNorm = normalizeQuery(c.name);
+      return isEditionOfSameGame(bestNorm, nameNorm, true) || isEditionOfSameGame(nameNorm, bestNorm, true);
+    }).slice(0, 3);
+    return { status: 'found', best, alternatives };
   }
 
   // 4: считаем схожесть
