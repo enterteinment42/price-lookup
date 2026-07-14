@@ -155,6 +155,25 @@ export function similarity(a, b) {
   return (2 * intersection) / (A.size + B.size);
 }
 
+/**
+ * Грубая транслитерация кириллицы в латиницу (PL-31).
+ * Нужна для trustTop-режима: similarity() между кириллическим запросом и
+ * латинским именем игры всегда 0 (биграммы не пересекаются), поэтому в имени
+ * из PS Store сравнивать не с чем. Транслитерация даёт хоть какой-то латинский
+ * сигнал: "резидент ивел" → "rezident ivel" ≈ "resident evil" по биграммам.
+ * Транслитерация фонетическая и неточная (з→z, а в англ. "resident" это s) —
+ * поэтому используется только для переранжирования и с заниженными порогами.
+ */
+const CYR_LAT = {
+  'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z',
+  'и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r',
+  'с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch',
+  'ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya',
+};
+export function translitCyrillic(s) {
+  return String(s || '').toLowerCase().replace(/[а-яё]/g, (ch) => CYR_LAT[ch] ?? ch);
+}
+
 // =============================================================================
 // ПАРСЕР СТРАНИЦЫ ПОИСКА
 // =============================================================================
@@ -317,6 +336,20 @@ function isEditionOfSameGame(queryNorm, nameNorm, strict = false) {
   return queryNorm.split(/\s+/).length >= 3;
 }
 
+// PL-23: из кандидатов-соседей оставляет только настоящие издания игры best.
+// Соседние результаты поиска Sony — не обязательно издания того же тайтла; без
+// фильтра чужая дешёвая игра попадала в ценовой пул lookupPrice и могла победить
+// как «минимальная цена» с чужим названием. Сравниваем в обе стороны (Deluxe после
+// Standard и наоборот), strict — чтобы «god of war ragnarok» не сошёл за издание
+// «god of war».
+function trustTopEditions(best, others) {
+  const bestNorm = normalizeQuery(best.name);
+  return others.filter((c) => {
+    const nameNorm = normalizeQuery(c.name);
+    return isEditionOfSameGame(bestNorm, nameNorm, true) || isEditionOfSameGame(nameNorm, bestNorm, true);
+  }).slice(0, 3);
+}
+
 export function matchGame(query, candidates, opts = {}) {
   const {
     platform,
@@ -337,20 +370,45 @@ export function matchGame(query, candidates, opts = {}) {
     return true;
   });
 
-  // Если trustTop — PS Store сам обработал перевод/аббревиатуры, берём первый подходящий
+  // Если trustTop — PS Store сам обработал перевод/аббревиатуры кириллицы.
   if (trustTop) {
     if (eligible.length === 0) return { status: 'not_found' };
-    const best = eligible[0];
-    // PL-23: соседние результаты поиска — не обязательно издания той же игры.
-    // Без фильтра чужая дешёвая игра из топа выдачи Sony попадала в общий ценовой
-    // пул lookupPrice и могла победить как «минимальная цена» с чужим названием.
-    // Сравниваем в обе стороны: Deluxe после Standard и Standard после Deluxe.
-    const bestNorm = normalizeQuery(best.name);
-    const alternatives = eligible.slice(1).filter((c) => {
-      const nameNorm = normalizeQuery(c.name);
-      return isEditionOfSameGame(bestNorm, nameNorm, true) || isEditionOfSameGame(nameNorm, bestNorm, true);
-    }).slice(0, 3);
-    return { status: 'found', best, alternatives };
+
+    // PL-31: раньше слепо брали eligible[0]. Но сырой кириллический поиск Sony
+    // возвращает не пустой список, а несколько слабых совпадений, и первое из них
+    // могло оказаться чужой игрой ("резидент ивел 4" → "4PGP") — клиенту уверенно
+    // показывалась чужая цена. Транслитерируем запрос в латиницу и переранжируем
+    // кандидатов по биграммному сходству — берём лучший по сходству, а не первый
+    // по позиции Sony. Если сигнала нет — не выдаём found вслепую.
+    const qLat = normalizeQuery(translitCyrillic(query));
+
+    // Транслитерация ничего не дала (запрос без кириллических букв дошёл сюда) —
+    // сохраняем прежнее поведение: доверяем позиции Sony.
+    if (!qLat) {
+      const best = eligible[0];
+      return { status: 'found', best, alternatives: trustTopEditions(best, eligible.slice(1)) };
+    }
+
+    const rescored = eligible
+      .map((c, i) => ({ c, i, sim: similarity(qLat, normalizeQuery(c.name)) }))
+      .sort((a, b) => b.sim - a.sim || a.i - b.i); // при равном сходстве — позиция Sony
+    const topSim = rescored[0].sim;
+
+    // Пороги занижены и эвристические: транслитерация фонетическая и неточная,
+    // ждать высокого Dice-сходства нельзя. Уверенный матч → found; слабый сигнал →
+    // ambiguous (пусть клиент выберет, а не мы угадываем); нулевой → not_found
+    // (честная заявка менеджеру лучше уверенно неправильной цены).
+    const TRUST_CONF = 0.45;
+    const TRUST_GREY = 0.28;
+
+    if (topSim >= TRUST_CONF) {
+      const best = rescored[0].c;
+      return { status: 'found', best, alternatives: trustTopEditions(best, rescored.slice(1).map(r => r.c)) };
+    }
+    if (topSim >= TRUST_GREY) {
+      return { status: 'ambiguous', candidates: rescored.slice(0, 5).map(r => r.c) };
+    }
+    return { status: 'not_found' };
   }
 
   // 4: считаем схожесть

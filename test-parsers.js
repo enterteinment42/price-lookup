@@ -102,6 +102,42 @@ console.log(`  alternatives: [${ttAltNames.join(' | ')}]`);
 console.log(`  Итого: ${ttTests.length - ttFails}/${ttTests.length}`);
 
 // =============================================================================
+// 2c. matchGame trustTop (PL-31) — переранжирование по транслит-сходству
+// Сырой кириллический поиск Sony ставит чужую игру первой ("резидент ивел 4" →
+// "4PGP"). Раньше брали eligible[0] слепо → клиенту уходила чужая цена/название.
+// Теперь запрос транслитерируется и кандидаты переранжируются по сходству —
+// best должен стать настоящей игрой, а не первым мусором Sony.
+// =============================================================================
+console.log('\n=== 2c. matchGame trustTop rerank (PL-31) ===');
+// Кейс 1: правильная игра есть в выдаче, но не первой — должна победить.
+const p31Candidates = [
+  _tt('4PGP', 'FULL_GAME', 1990),                              // мусор, Sony ставит первым
+  _tt('Resident Evil 4', 'FULL_GAME', 2999),
+  _tt('Resident Evil 4: Deluxe Edition', 'PREMIUM_EDITION', 3999),
+];
+const p31Res = matchGame('резидент ивел 4', p31Candidates, { trustTop: true });
+const p31Alt = (p31Res.alternatives || []).map((c) => c.name);
+// Кейс 2: правильной игры в выдаче нет, только мусор — НЕ выдаём found вслепую.
+const p31Junk = matchGame('абвгдеж', [
+  _tt('4PGP', 'FULL_GAME', 1990),
+  _tt('Peppa Pig: World Adventures', 'FULL_GAME', 199),
+], { trustTop: true });
+const p31Tests = [
+  ['status found', p31Res.status === 'found'],
+  ['best = Resident Evil 4 (не 4PGP)', p31Res.best?.name === 'Resident Evil 4'],
+  ['4PGP НЕ в alternatives', !p31Alt.includes('4PGP')],
+  ['Deluxe в alternatives', p31Alt.includes('Resident Evil 4: Deluxe Edition')],
+  ['мусорный запрос → не found', p31Junk.status !== 'found'],
+];
+let p31Fails = 0;
+for (const [label, ok] of p31Tests) {
+  if (!ok) p31Fails++;
+  console.log(`  ${ok ? '✅' : '❌'}  ${label}`);
+}
+console.log(`  best="${p31Res.best?.name}"  alternatives=[${p31Alt.join(' | ')}]  junk.status=${p31Junk.status}`);
+console.log(`  Итого: ${p31Tests.length - p31Fails}/${p31Tests.length}`);
+
+// =============================================================================
 // 3. parseSearchPage на реальных файлах
 // =============================================================================
 console.log('\n=== 3. parseSearchPage(search-tr.html) ===');
