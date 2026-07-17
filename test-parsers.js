@@ -52,7 +52,9 @@ const normTests = [
   // ABBR-словарь разворачивает gta → grand theft auto (намеренно: нормализация
   // симметрична для запроса и имени кандидата, поэтому матчинг не страдает)
   ['GTA V', 'grand theft auto 5'],
-  ["Assassin's Creed", 'assassin s creed'],
+  // Апостроф выпадает без пробела: "assassin s creed" давал лишнее слово (PL-32)
+  ["Assassin's Creed", 'assassins creed'],
+  ['Marvel’s Wolverine', 'marvels wolverine'],
   ['  Spider-Man  ', 'spider man'],
   ['Final Fantasy VII Remake', 'final fantasy 7 remake'],
   ['Ведьмак 3', 'ведьмак 3'],
@@ -100,6 +102,43 @@ for (const [label, ok] of ttTests) {
 }
 console.log(`  alternatives: [${ttAltNames.join(' | ')}]`);
 console.log(`  Итого: ${ttTests.length - ttFails}/${ttTests.length}`);
+
+// =============================================================================
+// 2d. matchGame — апгрейд-товары не участвуют в цене (PL-32)
+// Живая выдача Sony по "Marvel's Wolverine": сама игра 3449 TL, Deluxe 3849 TL и
+// "Digital Deluxe Edition Upgrade" 400 TL с classification GAME_BUNDLE. Апгрейд
+// проходил фильтр «только игры» и выигрывал выбор минимальной цены → клиенту
+// уходило ~1010 ₽ вместо реальной цены игры.
+// =============================================================================
+console.log('\n=== 2d. matchGame upgrade-фильтр (PL-32) ===');
+const upCandidates = [
+  _tt('Marvel’s Wolverine', 'FULL_GAME', 3449),
+  _tt('Marvel’s Wolverine Digital Deluxe Edition', 'PREMIUM_EDITION', 3849),
+  _tt('Marvel’s Wolverine Digital Deluxe Edition Upgrade', 'GAME_BUNDLE', 400),
+];
+const upRes = matchGame("Marvel's Wolverine", upCandidates, {});
+const upAlt = (upRes.alternatives || []).map((c) => c.name);
+// Клиент сам ищет апгрейд — фильтр не должен выбрасывать апгрейд из выдачи
+// (found с ним или ambiguous с ним в списке — оба варианта приемлемы, в отличие от
+// «апгрейда нет вообще»)
+const upWanted = matchGame("Marvel's Wolverine Digital Deluxe Edition Upgrade", upCandidates, {});
+const upWantedNames = [upWanted.best, ...(upWanted.alternatives || []), ...(upWanted.candidates || [])]
+  .filter(Boolean).map((c) => c.name);
+const upTests = [
+  ['status found', upRes.status === 'found'],
+  ['best = сама игра, не апгрейд', upRes.best?.name === 'Marvel’s Wolverine'],
+  ['цена базовой игры, не 400', upRes.best?.effectivePriceLocal === 3449],
+  ['апгрейд НЕ в alternatives', !upAlt.some((n) => /Upgrade/.test(n))],
+  ['Deluxe остался в alternatives', upAlt.includes('Marvel’s Wolverine Digital Deluxe Edition')],
+  ['явный запрос апгрейда не теряет апгрейд', upWantedNames.some((n) => /Upgrade/.test(n))],
+];
+let upFails = 0;
+for (const [label, ok] of upTests) {
+  if (!ok) upFails++;
+  console.log(`  ${ok ? '✅' : '❌'}  ${label}`);
+}
+console.log(`  best="${upRes.best?.name}" (${upRes.best?.effectivePriceLocal})  alternatives=[${upAlt.join(' | ')}]`);
+console.log(`  Итого: ${upTests.length - upFails}/${upTests.length}`);
 
 // =============================================================================
 // 2c. matchGame trustTop (PL-31) — переранжирование по транслит-сходству

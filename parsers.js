@@ -45,6 +45,16 @@ const NON_GAME_CLASSIFICATIONS = new Set([
   'THEME',
 ]);
 
+/**
+ * Апгрейд-товары («Marvel's Wolverine Digital Deluxe Edition Upgrade»).
+ * Sony помечает их GAME_BUNDLE — то есть по classification они неотличимы от
+ * настоящих Ultimate-изданий и проходят фильтр «только игры». По сути это DLC:
+ * бесполезны без базовой игры и стоят копейки (Wolverine: 400 TL против 3449 TL
+ * за саму игру), поэтому всегда выигрывали выбор минимальной цены среди изданий
+ * и клиенту уходила цена в разы ниже реальной. Отсекаем по имени.
+ */
+const UPGRADE_RE = /\bupgrade\b/;
+
 // =============================================================================
 // ПАРСЕРЫ ЦЕН
 // =============================================================================
@@ -114,6 +124,11 @@ export function normalizeQuery(s) {
   let r = String(s).toLowerCase().trim();
   // Снимаем диакритику
   r = r.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  // Апострофы убираем БЕЗ пробела (до общей чистки пунктуации): "Marvel's" → "marvels".
+  // Пробел давал лишнее слово ("marvel s wolverine" — 3 вместо 2), из-за чего в
+  // isEditionOfSameGame ложно срабатывало правило «≥3 слов → остаток подзаголовок»,
+  // и заодно портил биграммное сходство тайтлам с апострофом (Assassin's, Tom Clancy's).
+  r = r.replace(/['’‘`´]/g, '');
   // Римские → арабские (только в типичных контекстах: пробел/начало/конец)
   // x исключён намеренно: слишком амбивалентен ("X-Men" → "10 men", "XCOM" — риск),
   // тогда как v однозначен в игровых тайтлах (GTA V, Street Fighter V, Battlefield V)
@@ -360,10 +375,13 @@ export function matchGame(query, candidates, opts = {}) {
   } = opts;
 
   const queryNorm = normalizeQuery(query);
+  // Если клиент сам ищет апгрейд — не мешаем ему; иначе апгрейды отсекаем (см. UPGRADE_RE)
+  const queryWantsUpgrade = UPGRADE_RE.test(queryNorm);
 
   // 1+2+3: первичная фильтрация
   const eligible = candidates.filter((c) => {
     if (!GAME_CLASSIFICATIONS.has(c.classification)) return false;
+    if (!queryWantsUpgrade && UPGRADE_RE.test(normalizeQuery(c.name))) return false;
     if (c.isUnavailable) return false;
     if (!includeFree && c.isFree) return false;
     if (platform && c.platforms.length > 0 && !c.platforms.includes(platform)) return false;
