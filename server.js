@@ -157,6 +157,13 @@ async function fetchHtml(url) {
   return response.text();
 }
 
+// Порог TR-приоритета: Индия побеждает Турцию, только если её рублёвая цена
+// не выше trBest × этого множителя, т.е. дешевле минимум на 12% ОТ турецкой цены.
+// Турция обычно самый дешёвый регион и стабильнее по механике гифт-карт, поэтому
+// переключаемся на Индию лишь при ощутимом выигрыше. Один источник для winner и
+// для дедупликации изданий — чтобы выбранная цена и список изданий не разъехались.
+const TR_PRIORITY_FACTOR = 1 - 0.12;
+
 async function convertToRub(priceLocal, currency) {
   const { markupTiers, rate, inrGift, rounding } = await getSettings();
   let base;
@@ -455,10 +462,14 @@ async function lookupPrice(gameName, opts = {}) {
     const trBest = trOptions[0] ?? null;
     const inBest = inOptions[0] ?? null;
 
-    // TR-приоритет: India побеждает только если дешевле на ≥20%
+    // TR-приоритет: Индия побеждает, только если дешевле Турции на ≥12%
+    // (порог считается ОТ турецкой цены, т.е. inRub <= trRub * (1 - 0.12)).
+    // Запас над классом «новых игр» вида 3449 TL / 4999 ₹ (разрыв ~13.7%): при 12%
+    // такие тайтлы уверенно уходят в Индию (Marvel's Wolverine: TR 7360 ₽ vs IN 6350 ₽),
+    // не прыгая между регионами при обычном движении курса. TR_PRIORITY_FACTOR = 1 - 0.12.
     let chosen;
     if (trBest && inBest) {
-      chosen = inBest.conv.priceRub <= trBest.conv.priceRub * 0.8 ? inBest : trBest;
+      chosen = inBest.conv.priceRub <= trBest.conv.priceRub * TR_PRIORITY_FACTOR ? inBest : trBest;
     } else {
       chosen = trBest ?? inBest;
     }
@@ -475,7 +486,7 @@ async function lookupPrice(gameName, opts = {}) {
 
     // Все издания (включая выбранное) — для показа списком в UI.
     // Дедупликация по нормализованному имени с тем же TR-приоритетом что и у winner:
-    // IN-версия издания вытесняет TR только если дешевле на ≥20%.
+    // IN-версия издания вытесняет TR только если дешевле на ≥12% (TR_PRIORITY_FACTOR).
     const editionsByName = new Map();
     for (const o of allOptions) {
       const n = normalizeQuery(o.candidate.name);
@@ -485,7 +496,7 @@ async function lookupPrice(gameName, opts = {}) {
       } else if (existing.currency !== o.currency) {
         const tr = o.currency === 'TRY' ? o : existing;
         const inOpt = o.currency === 'INR' ? o : existing;
-        editionsByName.set(n, inOpt.conv.priceRub <= tr.conv.priceRub * 0.8 ? inOpt : tr);
+        editionsByName.set(n, inOpt.conv.priceRub <= tr.conv.priceRub * TR_PRIORITY_FACTOR ? inOpt : tr);
       } else if (o.conv.priceRub < existing.conv.priceRub) {
         editionsByName.set(n, o);
       }
