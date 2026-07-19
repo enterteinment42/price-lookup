@@ -307,6 +307,11 @@ const CYRILLIC_TRANSLATE = [
   // Battlefield
   ['батлфилд',            'battlefield'],
   ['батла',               'battlefield'],
+  // Hogwarts Legacy — в IGDB нет русского альт-имени, перевод возможен только словарём
+  ['хогвартс легаси',     'hogwarts legacy'],
+  ['хогвартс наследие',   'hogwarts legacy'],
+  ['хогвардс',            'hogwarts legacy'],
+  ['хогвартс',            'hogwarts legacy'],
   // Другие
   ['одни из нас',         'the last of us'],
   ['мортал комбат',       'mortal kombat'],
