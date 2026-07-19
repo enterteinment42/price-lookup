@@ -177,6 +177,42 @@ console.log(`  best="${p31Res.best?.name}"  alternatives=[${p31Alt.join(' | ')}]
 console.log(`  Итого: ${p31Tests.length - p31Fails}/${p31Tests.length}`);
 
 // =============================================================================
+// 2e. matchGame — мульти-игровой бандл не роняет группу в ambiguous
+// Живая выдача по "hogwarts legacy": базы «PS4/PS5 Version», Deluxe и бандл
+// «Hogwarts Legacy + Harry Potter: Quidditch Champions…». Слова бандла — не
+// edition-слова, и один такой кандидат ронял весь однозначный запрос в
+// ambiguous. Бандл содержит саму игру → считается её изданием (isBundleWithGame).
+// =============================================================================
+console.log('\n=== 2e. matchGame бандл-как-издание (Hogwarts) ===');
+const hwCandidates = [
+  _tt('Hogwarts Legacy PS4 Version', 'FULL_GAME', 1499),
+  _tt('Hogwarts Legacy PS5 Version', 'PS5_NATIVE_GAME', 1699),
+  _tt('Hogwarts Legacy + Harry Potter: Quidditch Champions Deluxe Editions Bundle', 'GAME_BUNDLE', 2499),
+  _tt('Hogwarts Legacy: Digital Deluxe Edition', 'PREMIUM_EDITION', 1999),
+];
+const hwRes = matchGame('hogwarts legacy', hwCandidates, {});
+const hwAlt = (hwRes.alternatives || []).map((c) => c.name);
+// Контроль: франшиза без «+» по-прежнему ambiguous — сиквелы не выбираем молча
+const fcRes = matchGame('far cry', [
+  _tt('Far Cry 6', 'FULL_GAME', 999),
+  _tt('Far Cry Primal', 'FULL_GAME', 799),
+], {});
+const hwTests = [
+  ['status found', hwRes.status === 'found'],
+  ['best = дешевейшая база (PS4)', hwRes.best?.name === 'Hogwarts Legacy PS4 Version'],
+  ['бандл В alternatives (издание, не мусор)', hwAlt.some((n) => n.includes('+'))],
+  ['Deluxe в alternatives', hwAlt.includes('Hogwarts Legacy: Digital Deluxe Edition')],
+  ['франшиза без «+» осталась ambiguous', fcRes.status === 'ambiguous'],
+];
+let hwFails = 0;
+for (const [label, ok] of hwTests) {
+  if (!ok) hwFails++;
+  console.log(`  ${ok ? '✅' : '❌'}  ${label}`);
+}
+console.log(`  best="${hwRes.best?.name}" (${hwRes.best?.effectivePriceLocal})  alternatives=[${hwAlt.join(' | ')}]`);
+console.log(`  Итого: ${hwTests.length - hwFails}/${hwTests.length}`);
+
+// =============================================================================
 // 3. parseSearchPage на реальных файлах
 // =============================================================================
 console.log('\n=== 3. parseSearchPage(search-tr.html) ===');

@@ -351,6 +351,17 @@ function isEditionOfSameGame(queryNorm, nameNorm, strict = false) {
   return queryNorm.split(/\s+/).length >= 3;
 }
 
+// «X + Y …Bundle» — бандл запрошенной игры с другим товаром. Считаем его
+// изданием X: в отличие от апгрейда (UPGRADE_RE) бандл содержит саму игру,
+// и клиент, ищущий X, может хотеть купить именно его. «+» стирается
+// normalizeQuery, поэтому смотрим сырое имя; сегмент до «+» должен сам быть
+// изданием запрошенной игры (перевёрнутый «Y + X Bundle» не считается).
+function isBundleWithGame(queryNorm, rawName) {
+  if (!rawName || !rawName.includes('+')) return false;
+  const firstSegment = normalizeQuery(rawName.split('+')[0]);
+  return !!firstSegment && isEditionOfSameGame(queryNorm, firstSegment);
+}
+
 // PL-23: из кандидатов-соседей оставляет только настоящие издания игры best.
 // Соседние результаты поиска Sony — не обязательно издания того же тайтла; без
 // фильтра чужая дешёвая игра попадала в ценовой пул lookupPrice и могла победить
@@ -471,7 +482,11 @@ export function matchGame(query, candidates, opts = {}) {
     );
 
     // Все авто-кандидаты — издания одной игры → берём дешевейшее, возвращаем все для cross-region
-    const allSameGame = auto.every(c => isEditionOfSameGame(queryNorm, normalizeQuery(c.name)));
+    // (бандл «игра + другой товар» тоже издание — один чужеродный по словам бандл
+    // не должен ронять однозначный запрос в ambiguous, см. кейс Hogwarts Legacy)
+    const allSameGame = auto.every(c =>
+      isEditionOfSameGame(queryNorm, normalizeQuery(c.name)) || isBundleWithGame(queryNorm, c.name)
+    );
     if (allSameGame) {
       return {
         status: 'found',
