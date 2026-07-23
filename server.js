@@ -508,7 +508,11 @@ async function lookupPrice(gameName, opts = {}) {
     }
     const editions = [...editionsByName.values()]
       .sort((a, b) => a.conv.priceRub - b.conv.priceRub)
-      .slice(0, 3)
+      // Кап на длину списка. Было 3 — резало 4-е (самое дорогое) издание у игр
+      // с полной линейкой (AC Odyssey: Standard/Deluxe/Gold/Ultimate — Ultimate
+      // терялся). Список уже вычищен до настоящих изданий (trustTopEditions +
+      // дедуп по имени), поэтому 5 покрывает все реальные линейки без мусора.
+      .slice(0, 5)
       .map(o => ({
         name: o.candidate.name,
         priceRUB: o.conv.priceRub,
