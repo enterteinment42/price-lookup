@@ -213,6 +213,49 @@ console.log(`  best="${hwRes.best?.name}" (${hwRes.best?.effectivePriceLocal})  
 console.log(`  Итого: ${hwTests.length - hwFails}/${hwTests.length}`);
 
 // =============================================================================
+// 2f. matchGame — точное имя товара → found, без петли ambiguous (PL-36)
+// Живая выдача Sony по "mortal kombat x": "Mortal Kombat X" (само имя товара и
+// строгий префикс "Mortal Kombat XL") + "Mortal Kombat XL" → allSameGame=false →
+// ambiguous, а клик по кандидату слал ровно то же имя → вечная петля выбора.
+// Теперь точное совпадение имени с запросом сразу даёт found.
+// =============================================================================
+console.log('\n=== 2f. matchGame точное имя → found (PL-36) ===');
+const mkCandidates = [
+  _tt('Mortal Kombat X', 'FULL_GAME', 899),
+  _tt('Mortal Kombat XL', 'FULL_GAME', 1299),
+  _tt('Mortal Kombat X Premium Edition', 'PREMIUM_EDITION', 1499),
+];
+const mkX = matchGame('mortal kombat x', mkCandidates, {});
+const mkXL = matchGame('mortal kombat xl', mkCandidates, {});
+// Симуляция клика по кандидату: повторный поиск ровно по имени товара
+const mkClickX = matchGame('Mortal Kombat X', mkCandidates, {});
+const mkClickXL = matchGame('Mortal Kombat XL', mkCandidates, {});
+// Регрессия: франшизный запрос без точного совпадения остаётся ambiguous
+const mkFr = matchGame('mortal kombat', [
+  _tt('Mortal Kombat X', 'FULL_GAME', 899),
+  _tt('Mortal Kombat XL', 'FULL_GAME', 1299),
+  _tt('Mortal Kombat 11', 'FULL_GAME', 1099),
+], {});
+const mkXalt = (mkX.alternatives || []).map((c) => c.name);
+const mkTests = [
+  ['"mortal kombat x" → found', mkX.status === 'found'],
+  ['best = Mortal Kombat X', mkX.best?.name === 'Mortal Kombat X'],
+  ['XL (другая игра) НЕ в alternatives', !mkXalt.includes('Mortal Kombat XL')],
+  ['Premium (издание) в alternatives', mkXalt.includes('Mortal Kombat X Premium Edition')],
+  ['"mortal kombat xl" → found (best XL)', mkXL.status === 'found' && mkXL.best?.name === 'Mortal Kombat XL'],
+  ['клик по «Mortal Kombat X» не зацикливает (found)', mkClickX.status === 'found' && mkClickX.best?.name === 'Mortal Kombat X'],
+  ['клик по «Mortal Kombat XL» не зацикливает (found)', mkClickXL.status === 'found' && mkClickXL.best?.name === 'Mortal Kombat XL'],
+  ['франшиза "mortal kombat" (нет точного) осталась ambiguous', mkFr.status === 'ambiguous'],
+];
+let mkFails = 0;
+for (const [label, ok] of mkTests) {
+  if (!ok) mkFails++;
+  console.log(`  ${ok ? '✅' : '❌'}  ${label}`);
+}
+console.log(`  best="${mkX.best?.name}" (${mkX.best?.effectivePriceLocal})  alternatives=[${mkXalt.join(' | ')}]`);
+console.log(`  Итого: ${mkTests.length - mkFails}/${mkTests.length}`);
+
+// =============================================================================
 // 3. parseSearchPage на реальных файлах
 // =============================================================================
 console.log('\n=== 3. parseSearchPage(search-tr.html) ===');

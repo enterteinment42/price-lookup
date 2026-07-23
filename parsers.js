@@ -477,6 +477,23 @@ export function matchGame(query, candidates, opts = {}) {
 
   // 6: если есть автоматические — выбираем лучший вариант
   if (auto.length > 0) {
+    // PL-36: точное совпадение имени товара с запросом → это и есть игра, не
+    // спрашиваем «вы имели в виду». Без этого "Mortal Kombat X" (реальное имя
+    // товара и строгий префикс "Mortal Kombat XL") вечно висит в ambiguous, а
+    // клик по кандидату шлёт то же имя → петля. Клик по ЛЮБОМУ кандидату всегда
+    // несёт точное имя товара, поэтому эта ветка расшивает и саму петлю выбора.
+    const exactByName = auto.filter((c) => normalizeQuery(c.name) === queryNorm);
+    if (exactByName.length > 0) {
+      const best = exactByName.reduce((a, b) =>
+        (b.effectivePriceLocal ?? Infinity) < (a.effectivePriceLocal ?? Infinity) ? b : a
+      );
+      return {
+        status: 'found',
+        best,
+        alternatives: trustTopEditions(best, auto.filter((c) => c !== best)),
+      };
+    }
+
     const sortedByPrice = [...auto].sort(
       (a, b) => (a.effectivePriceLocal ?? Infinity) - (b.effectivePriceLocal ?? Infinity)
     );
